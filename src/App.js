@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import './App.css'; 
 
 // --- FIXED CONFIGURATION ---
 // ⚠️ We use ONLY the local proxy URL here. 
 // The local-cors-proxy is already configured to point to https://psu.instructure.com
-const CORS_PROXY = "http://localhost:8010"; 
+const CORS_PROXY = "http://localhost:8010/proxy"; 
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('canvas_token') || '');
@@ -29,13 +29,13 @@ function App() {
     const headers = { Authorization: `Bearer ${apiToken}` };
 
     try {
-      // 1. GET USER (FIXED: Removed CANVAS_BASE_URL)
+      // 1. GET USER
       const userRes = await fetch(`${CORS_PROXY}/api/v1/users/self`, { headers });
       if (!userRes.ok) throw new Error("Failed to login. Check token.");
       const user = await userRes.json();
       setUserData(user);
 
-      // 2. GET ACTIVE COURSES (FIXED: Removed CANVAS_BASE_URL)
+      // 2. GET ACTIVE COURSES
       const coursesRes = await fetch(
         `${CORS_PROXY}/api/v1/courses?enrollment_state=active&include[]=total_scores&per_page=50`, 
         { headers }
@@ -43,7 +43,7 @@ function App() {
       const coursesData = await coursesRes.json();
       setCourses(coursesData);
 
-      // 3. GET ASSIGNMENTS (FIXED: Removed CANVAS_BASE_URL)
+      // 3. GET ASSIGNMENTS
       const assignmentPromises = coursesData.map(async (course) => {
         try {
           const assignRes = await fetch(
@@ -68,7 +68,6 @@ function App() {
 
     } catch (err) {
       console.error(err);
-      // The 404 error is now handled as a login failure, which is the correct behavior if the proxy setup fails
       setError(err.message + " (Check console for network details)");
     } finally {
       setLoading(false);
@@ -89,15 +88,15 @@ function App() {
 
     const averageGrade = gradedCourses > 0 ? (totalGrade / gradedCourses) : 0;
     
-    // Check if assignment is submitted (using Canvas 'submission' object if available, or flag)
+    // Check if assignment is submitted
     const completedCount = assignList.filter(a => 
       (a.submission && a.submission.submitted_at) || a.has_submitted_submissions
     ).length;
     
-    // Calculate Score: (Avg Grade * 10) + (Assignments Done * 50)
+    // Calculate Score
     const calculatedScore = Math.floor((averageGrade * 10) + (completedCount * 50));
     
-    // Count Upcoming: Future dates OR no date
+    // Count Upcoming
     const upcomingCount = assignList.filter(a => {
         if (!a.due_at) return true;
         return new Date(a.due_at) > new Date();
@@ -116,9 +115,9 @@ function App() {
     setUserData({ name: "Demo Student", avatar_url: "" });
     
     const fakeCourses = [
-      { id: 1, name: "Advanced React 101", enrollments: [{ computed_current_score: 92 }] },
-      { id: 2, name: "Intro to Botany", enrollments: [{ computed_current_score: 85 }] },
-      { id: 3, name: "Calculus II", enrollments: [{ computed_current_score: 78 }] }
+      { id: 1, name: "Advanced React 101", enrollments: [{ computed_current_score: 92 }] }, // > 85 (Show)
+      { id: 2, name: "Intro to Botany", enrollments: [{ computed_current_score: 85 }] },    // = 85 (Show)
+      { id: 3, name: "Calculus II", enrollments: [{ computed_current_score: 78 }] }         // < 85 (Hide)
     ];
     setCourses(fakeCourses);
 
@@ -190,12 +189,10 @@ function App() {
                 <ul>
                   {assignments
                     .filter(a => {
-                       // Show if NO due date OR due date is in future
                        if (!a.due_at) return true; 
                        return new Date(a.due_at) >= new Date();
                     })
                     .sort((a, b) => {
-                       // Sort: Dates first, then no dates
                        if (!a.due_at) return 1;
                        if (!b.due_at) return -1;
                        return new Date(a.due_at) - new Date(b.due_at);
@@ -216,20 +213,32 @@ function App() {
               )}
             </section>
 
-            {/* CLASS LIST */}
+            {/* CLASS LIST (FILTERED FOR > 85%) */}
             <section className="list-section">
               <h2>📚 Your Classes</h2>
               <div className="course-grid">
-                {courses.map(c => (
-                  <div key={c.id} className="course-card">
-                    <h4>{c.name}</h4>
-                    {c.enrollments && c.enrollments[0] && (
-                      <div className="grade-badge">
-                        Current Grade: {c.enrollments[0].computed_current_score || 'N/A'}%
-                      </div>
-                    )}
-                  </div>
+                {courses
+                  .filter(c => {
+                    // Safety check: Make sure grade data exists first
+                    const grade = c.enrollments?.[0]?.computed_current_score;
+                    // Filter: Only return true if grade exists and is >= 85
+                    return grade && grade >= 85;
+                  })
+                  .map(c => (
+                    <div key={c.id} className="course-card">
+                      <h4>{c.name}</h4>
+                      {c.enrollments && c.enrollments[0] && (
+                        <div className="grade-badge">
+                          Current Grade: {c.enrollments[0].computed_current_score || 'N/A'}%
+                        </div>
+                      )}
+                    </div>
                 ))}
+                
+                {/* Optional: Message if nothing matches */}
+                {courses.length > 0 && courses.filter(c => c.enrollments?.[0]?.computed_current_score >= 85).length === 0 && (
+                  <p style={{fontStyle: 'italic', color: '#666'}}>No classes with a grade of 85% or higher found.</p>
+                )}
               </div>
             </section>
           </div>
