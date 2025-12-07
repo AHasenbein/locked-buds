@@ -222,7 +222,7 @@ function App() {
                     // Safety check: Make sure grade data exists first
                     const grade = c.enrollments?.[0]?.computed_current_score;
                     // Filter: Only return true if grade exists and is >= 85
-                    return grade && grade >= 85;
+                    return grade && grade >= 1;
                   })
                   .map(c => (
                     <div key={c.id} className="course-card">
